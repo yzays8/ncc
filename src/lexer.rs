@@ -53,6 +53,12 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
                             constant.push(*c);
                             input.next();
                         }
+                        'a'..='z' | 'A'..='Z' | '_' => {
+                            return Err(NccError::Lexing(format!(
+                                "Unexpected character in constant: {}",
+                                c
+                            )));
+                        }
                         _ => break,
                     }
                 }
