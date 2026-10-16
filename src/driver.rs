@@ -4,6 +4,7 @@ use std::process::Command;
 
 use clap::Parser as ClapParser;
 
+use crate::codegen;
 use crate::error::Result;
 use crate::lexer;
 use crate::parser::Parser;
@@ -42,33 +43,37 @@ impl Driver {
     }
 
     pub fn run(&self) -> Result<()> {
-        let source_path = match (&self.args.lex, &self.args.parse, &self.args.codegen) {
-            (Some(_), None, None) => Path::new(self.args.lex.as_ref().unwrap()),
-            (None, Some(_), None) => Path::new(self.args.parse.as_ref().unwrap()),
-            (None, None, Some(_)) => todo!(),
-            _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Must specify exactly one of --lex, --parse, or --codegen",
-                )
-                .into());
+        match (&self.args.lex, &self.args.parse, &self.args.codegen) {
+            (Some(_), None, None) => {
+                let source_path = Path::new(self.args.lex.as_ref().unwrap());
+                let source = self.preprocess(source_path)?;
+                let tokens = lexer::lex(&source)?;
+                println!("{:?}", tokens);
+                Ok(())
             }
-        };
-
-        let source = self.preprocess(source_path)?;
-        let tokens = lexer::lex(&source)?;
-        if self.args.parse.is_none() {
-            println!("{:?}", tokens);
-            return Ok(());
+            (None, Some(_), None) => {
+                let source_path = Path::new(self.args.parse.as_ref().unwrap());
+                let source = self.preprocess(source_path)?;
+                let tokens = lexer::lex(&source)?;
+                let ast = Parser::new(&tokens).parse()?;
+                println!("{:?}", ast);
+                Ok(())
+            }
+            (None, None, Some(_)) => {
+                let source_path = Path::new(self.args.codegen.as_ref().unwrap());
+                let source = self.preprocess(source_path)?;
+                let tokens = lexer::lex(&source)?;
+                let ast = Parser::new(&tokens).parse()?;
+                let codegen = codegen::generate(&ast)?;
+                println!("{:?}", codegen);
+                Ok(())
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Must specify exactly one of --lex, --parse, or --codegen",
+            )
+            .into()),
         }
-
-        let ast = Parser::new(&tokens).parse()?;
-        if self.args.codegen.is_none() {
-            println!("{:?}", ast);
-            return Ok(());
-        }
-
-        Ok(())
     }
 
     fn preprocess(&self, path: &Path) -> Result<String> {

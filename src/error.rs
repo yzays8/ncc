@@ -11,7 +11,7 @@ pub enum NccError {
     #[error("{0}")]
     Parsing(String),
     #[error("{0}")]
-    CodeGeneration(String),
+    Codegen(String),
     #[error("{0}")]
     Other(String),
 }

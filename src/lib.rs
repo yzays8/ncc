@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+pub mod codegen;
 pub mod driver;
 pub mod error;
 pub mod lexer;
