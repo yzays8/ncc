@@ -2,12 +2,13 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-use clap::Parser;
+use clap::Parser as ClapParser;
 
 use crate::error::Result;
 use crate::lexer;
+use crate::parser::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(Debug, ClapParser)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     #[arg(long, conflicts_with_all = ["parse", "codegen"], help = "Run the lexer, but stop before parsing")]
@@ -41,14 +42,31 @@ impl Driver {
     }
 
     pub fn run(&self) -> Result<()> {
-        if self.args.lex.is_none() || self.args.parse.is_some() || self.args.codegen.is_some() {
-            unimplemented!();
+        let source_path = match (&self.args.lex, &self.args.parse, &self.args.codegen) {
+            (Some(_), None, None) => Path::new(self.args.lex.as_ref().unwrap()),
+            (None, Some(_), None) => Path::new(self.args.parse.as_ref().unwrap()),
+            (None, None, Some(_)) => todo!(),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Must specify exactly one of --lex, --parse, or --codegen",
+                )
+                .into());
+            }
+        };
+
+        let source = self.preprocess(source_path)?;
+        let tokens = lexer::lex(&source)?;
+        if self.args.parse.is_none() {
+            println!("{:?}", tokens);
+            return Ok(());
         }
 
-        let source = self.preprocess(Path::new(self.args.lex.as_ref().unwrap()))?;
-        let tokens = lexer::lex(&source)?;
-
-        println!("{:?}", tokens);
+        let ast = Parser::new(&tokens).parse()?;
+        if self.args.codegen.is_none() {
+            println!("{:?}", ast);
+            return Ok(());
+        }
 
         Ok(())
     }
