@@ -5,6 +5,7 @@ use std::process::Command;
 use clap::Parser as ClapParser;
 
 use crate::codegen;
+use crate::emit::Emitter;
 use crate::error::Result;
 use crate::lexer;
 use crate::parser::Parser;
@@ -12,22 +13,25 @@ use crate::parser::Parser;
 #[derive(Debug, ClapParser)]
 #[command(version, about, long_about = None)]
 pub struct Args {
+    #[arg(help = "Path to the source file")]
+    pub source: String,
+
     #[arg(long, conflicts_with_all = ["parse", "codegen"], help = "Run the lexer, but stop before parsing")]
-    pub lex: Option<String>,
+    pub lex: bool,
 
     #[arg(
         long,
         conflicts_with_all = ["lex", "codegen"],
         help = "Run the lexer and parser, but stop before assembly generation"
     )]
-    pub parse: Option<String>,
+    pub parse: bool,
 
     #[arg(
         long,
         conflicts_with_all = ["lex", "parse"],
         help = "Perform lexing, parsing, and assembly generation, but stop before code emission"
     )]
-    pub codegen: Option<String>,
+    pub codegen: bool,
 }
 
 #[derive(Debug)]
@@ -43,37 +47,31 @@ impl Driver {
     }
 
     pub fn run(&self) -> Result<()> {
-        match (&self.args.lex, &self.args.parse, &self.args.codegen) {
-            (Some(_), None, None) => {
-                let source_path = Path::new(self.args.lex.as_ref().unwrap());
-                let source = self.preprocess(source_path)?;
-                let tokens = lexer::lex(&source)?;
-                println!("{:?}", tokens);
-                Ok(())
-            }
-            (None, Some(_), None) => {
-                let source_path = Path::new(self.args.parse.as_ref().unwrap());
-                let source = self.preprocess(source_path)?;
-                let tokens = lexer::lex(&source)?;
-                let ast = Parser::new(&tokens).parse()?;
-                println!("{:?}", ast);
-                Ok(())
-            }
-            (None, None, Some(_)) => {
-                let source_path = Path::new(self.args.codegen.as_ref().unwrap());
-                let source = self.preprocess(source_path)?;
-                let tokens = lexer::lex(&source)?;
-                let ast = Parser::new(&tokens).parse()?;
-                let codegen = codegen::generate(&ast)?;
-                println!("{:?}", codegen);
-                Ok(())
-            }
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Must specify exactly one of --lex, --parse, or --codegen",
-            )
-            .into()),
+        let source_path = Path::new(&self.args.source);
+        let source = self.preprocess(source_path)?;
+
+        let tokens = lexer::lex(&source)?;
+        if self.args.lex {
+            println!("{:?}", tokens);
+            return Ok(());
         }
+
+        let ast = Parser::new(&tokens).parse()?;
+        if self.args.parse {
+            println!("{:?}", ast);
+            return Ok(());
+        }
+
+        let asm_ast = codegen::generate(&ast)?;
+        if self.args.codegen {
+            println!("{:?}", asm_ast);
+            return Ok(());
+        }
+
+        let mut emitter = Emitter::new();
+        self.compile(source_path, &emitter.emit(asm_ast)?)?;
+
+        Ok(())
     }
 
     fn preprocess(&self, path: &Path) -> Result<String> {
@@ -86,6 +84,26 @@ impl Driver {
         }
 
         String::from_utf8(output.stdout).map_err(|e| io::Error::other(e).into())
+    }
+
+    fn compile(&self, source_path: &Path, asm: &str) -> Result<()> {
+        let asm_path = source_path.with_extension("s");
+        let exe_path = source_path.with_extension("");
+
+        std::fs::write(&asm_path, asm)?;
+
+        let status = Command::new("gcc")
+            .arg(&asm_path)
+            .arg("-o")
+            .arg(&exe_path)
+            .status()?;
+        if !status.success() {
+            return Err(io::Error::other("Failed to compile").into());
+        }
+
+        std::fs::remove_file(asm_path)?;
+
+        Ok(())
     }
 }
 
