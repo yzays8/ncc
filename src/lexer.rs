@@ -10,6 +10,9 @@ pub enum Token {
     OpenBrace,
     CloseBrace,
     Semicolon,
+    Tilde,
+    Minus,
+    MinusMinus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +88,19 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
             ';' => {
                 tokens.push(Token::Semicolon);
                 input.next();
+            }
+            '~' => {
+                tokens.push(Token::Tilde);
+                input.next();
+            }
+            '-' => {
+                input.next();
+                if let Some('-') = input.peek() {
+                    tokens.push(Token::MinusMinus);
+                    input.next();
+                } else {
+                    tokens.push(Token::Minus);
+                }
             }
             ' ' | '\t' | '\n' => {
                 input.next();
