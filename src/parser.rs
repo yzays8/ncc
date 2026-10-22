@@ -29,10 +29,17 @@ pub enum Statement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Int(i128),
+    Unary(UnaryOperator, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnaryOperator {
+    Complement,
+    Negate,
+}
 
 #[derive(Debug)]
 pub struct Parser {
@@ -88,9 +95,44 @@ impl Parser {
         Ok(Statement::Return(expr))
     }
 
-    /// <exp> ::= <int>
+    /// <exp> ::= <int> | <unop> <exp> | "(" <exp> ")"
     fn parse_exp(&mut self) -> Result<Expression> {
-        self.parse_int()
+        match self.peek() {
+            Some(Token::Constant(_)) => self.parse_int(),
+            Some(Token::Minus) | Some(Token::Tilde) => {
+                let unop = self.parse_unop()?;
+                let expr = self.parse_exp()?;
+                Ok(Expression::Unary(unop, Box::new(expr)))
+            }
+            Some(Token::OpenParen) => {
+                self.expect_token(Token::OpenParen)?;
+                let expr = self.parse_exp()?;
+                self.expect_token(Token::CloseParen)?;
+                Ok(expr)
+            }
+            Some(t) => Err(NccError::Parsing(format!(
+                "Expected expression, but found token {:?}",
+                t
+            ))),
+            None => Err(NccError::Parsing(
+                "Expected expression, but found end of input".to_string(),
+            )),
+        }
+    }
+
+    /// <unop> ::= "-" | "~"
+    fn parse_unop(&mut self) -> Result<UnaryOperator> {
+        match self.next() {
+            Some(Token::Minus) => Ok(UnaryOperator::Negate),
+            Some(Token::Tilde) => Ok(UnaryOperator::Complement),
+            Some(t) => Err(NccError::Parsing(format!(
+                "Expected unary operator, but found token {:?}",
+                t
+            ))),
+            None => Err(NccError::Parsing(
+                "Expected unary operator, but found end of input".to_string(),
+            )),
+        }
     }
 
     /// <identifier> ::= ? An identifier token ?
@@ -141,5 +183,9 @@ impl Parser {
             self.pos += 1;
         }
         token
+    }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.pos)
     }
 }

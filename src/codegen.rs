@@ -68,5 +68,6 @@ fn generate_statement(stmt: &parser::Statement) -> Result<Vec<Instruction>> {
 fn generate_expr(expr: &parser::Expression) -> Result<Operand> {
     match expr {
         parser::Expression::Int(value) => Ok(Operand::Immediate(*value)),
+        parser::Expression::Unary(_, _) => todo!(),
     }
 }
